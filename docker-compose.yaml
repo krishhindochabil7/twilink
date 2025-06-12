@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: gbr123
+      MYSQL_DATABASE: lendingkart_db
+      MYSQL_USER: twilio_user
+      MYSQL_PASSWORD: your_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  twilio-ai:
+    build: .
+    container_name: twilio_ai_app
+    depends_on:
+      - mysql
+    ports:
+      - "5050:8080"
+    environment:
+      DB_HOST: mysql
+      DB_USER: twilio_user
+      DB_PASSWORD: your_password
+      DB_NAME: lendingkart_db
+    volumes:
+      - .:/app
+
+volumes:
+  mysql-data:

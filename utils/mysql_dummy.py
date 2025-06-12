@@ -2,17 +2,17 @@ import mysql.connector
 from mysql.connector import Error
 import random
 from faker import Faker
-
+import os
 # Function to create the table and add dummy records
 def create_table_and_insert_dummy_records():
     connection = None
     try:
         # Connect to the MySQL database
         connection = mysql.connector.connect(
-            host='localhost',         # Change if your MySQL server is not localhost
-            user='twilio_user',     # Update with your MySQL username
-            password='your_password',  # Update with your MySQL password
-            database='lendingkart_db',  # Update with your target database
+            host=os.getenv('MYSQL_HOST', 'localhost'),
+            user=os.getenv('MYSQL_USER', 'twilio_user'),
+            password=os.getenv('MYSQL_PASSWORD', 'your_password'),
+            database=os.getenv('MYSQL_DATABASE', 'lendingkart_db'),
             auth_plugin='mysql_native_password'
         )
 
