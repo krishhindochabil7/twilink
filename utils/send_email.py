@@ -7,7 +7,8 @@ import os
 import sys
 from datetime import datetime
 from utils.db_config import execute_query
-
+import mysql.connector
+from mysql.connector import Error
 
 # Configure logging
 logging.basicConfig(
