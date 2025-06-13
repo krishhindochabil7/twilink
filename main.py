@@ -17,7 +17,7 @@ import whisper
 import numpy as np
 from collections import deque
 from utils.get_func_calls import extract_function_call,create_function_call_output,execute_function
-from utils.get_numbers import get_all_phone_numbers,get_total_calls_for_number,update_records
+from utils.get_numbers import get_phone_numbers,get_total_calls_for_number,update_records
 from utils.mysql_greet import fetch_explanation_by_phone
 from utils.get_target_result import get_targets_and_results
 from utils.conversarion_insights import get_insights
@@ -29,6 +29,8 @@ load_dotenv(override=True)
 
 call_queue = []
 csid = ""
+caller_number = None  # default global variable
+call_number = None  # default global variable
 
 class CallStatus(Enum):
     IDLE = 0
@@ -71,23 +73,23 @@ SYSTEM_MESSAGE = (
     Respond based on the specific type of detail requested:
 
         If user requests:
-        “policy details” → return only:
+        "policy details" → return only:
 
             Policy ID, Policy Type, Policy Start Date, Policy Maturity Date, Premium Amount, Premium Payment Frequency, Policy Status, Sum Assured, Bonus Amount, Surrender Value, Loan Against Policy, Policy Documents Received, Policy Documents Received Date
 
-        “claim details” → return only:
+        "claim details" → return only:
 
             Claim ID, Claim Type, Claim Amount, Claim Submission Date, Claim Status, Claim Rejection Reason
 
-        “policyholder details” → return only:
+        "policyholder details" → return only:
 
             Policyholder ID, Name, Address, City, State, Pincode, Phone Number, Email, Date of Birth, Gender
 
-        “nominee details” / “bank and nominee details” → return only:
+        "nominee details" / "bank and nominee details" → return only:
 
             Bank Name (no IFSC or sensitive info), Nominee Name, Nominee Relationship, Nominee Contact Number
 
-        If the user requests “insurance details” or “all insurance details” →
+        If the user requests "insurance details" or "all insurance details" →
         Return all of the following:
 
             Policyholder Details
@@ -176,52 +178,6 @@ class MobileNumberRequest(BaseModel):
 @app.post("/call-number/")
 async def make_a_call(data:MobileNumberRequest):
     await make_call(data.mobile_number)
-
-@app.api_route("/incoming-call", methods=["GET", "POST"])
-async def handle_incoming_call(request: Request):
-    """Handle incoming call and return TwiML response to connect to Media Stream."""
-    form_data = await request.form()
-
-    # Log caller information
-    caller_number = form_data.get("From")
-    caller_name = form_data.get("CallerName") 
-    caller_city = form_data.get("CallerCity")
-    caller_state = form_data.get("CallerState")
-    caller_zip = form_data.get("CallerZip")
-    caller_country = form_data.get("CallerCountry")
-
-    print(f"Caller Number: {caller_number}")
-    print(f"Caller Name: {caller_name}")
-    print(f"Caller Location: {caller_city}, {caller_state}, {caller_zip}, {caller_country}")
-
-
-    greet, lang = fetch_explanation_by_phone(caller_number)
-    target, result = get_targets_and_results(caller_number)
-        
-    voice_config = {
-            "Spanish": ("es-MX", "Polly.Mia"),
-            "Hindi": ("hi-IN", "Polly.Aditi"),
-            "English": ("en-US", "Polly.Joanna")
-        }
-        
-    lang_text, voice_name = voice_config.get(lang)
-        
-    response = VoiceResponse()
-    response.say(greet, language=lang_text, voice=voice_name)
-    response.pause(length=1)
-    response.say(f"These are the targets for today, {target}", language="en-US")
-    response.pause(length=1)
-    response.say(f"Following are the achievements for yesterday. {result}", language="en-US")
-    response.pause(length=1)
-    response.say("You need to focus on your target", language="en-US")
-    response.pause(length=1)
-    response.say("You can start talking now", language="en-US", voice="Polly.Joanna")
-    host = request.url.hostname
-    connect = Connect()
-    connect.stream(url=f"wss://{host}/media-stream")
-    response.append(connect)
-    
-    return HTMLResponse(content=str(response), media_type="application/xml")
 
 async def send_to_openai(audio_payload, openai_ws):
     """Send audio data to the OpenAI Realtime API."""
@@ -691,35 +647,35 @@ async def initialize_session(openai_ws):
                 ],
                 "additionalProperties": False
             }
+        },
+        {
+            "type": "function",
+            "name": "send_email_1",
+            "description": "Send an email to a given recipient with a subject and message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "The recipient email address."
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Email subject line."
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Body of the email message."
+                    }
+                },
+                "required": [
+                    "to",
+                    "subject",
+                    "body"
+                ],
+                "additionalProperties": False
+            }
         }
-        # {
-        #     "type": "function",
-        #     "name": "send_email_1",
-        #     "description": "Send an email to a given recipient with a subject and message.",
-        #     "parameters": {
-        #         "type": "object",
-        #         "properties": {
-        #             "to": {
-        #                 "type": "string",
-        #                 "description": "The recipient email address."
-        #             },
-        #             "subject": {
-        #                 "type": "string",
-        #                 "description": "Email subject line."
-        #             },
-        #             "body": {
-        #                 "type": "string",
-        #                 "description": "Body of the email message."
-        #             }
-        #         },
-        #         "required": [
-        #             "to",
-        #             "subject",
-        #             "body"
-        #         ],
-        #         "additionalProperties": False
-        #     }
-        # }
 
         ],
         "tool_choice": "auto",
@@ -786,11 +742,11 @@ async def make_call_with_status(phone_number: str):
         target, result = get_targets_and_results(phone_number)
         
         voice_config = {
-            "Spanish": ("es-MX", "Polly.Mia"),
-            "Hindi": ("hi-IN", "Polly.Aditi"),
-            "English": ("en-US", "Polly.Joanna")
+            "Spanish": ("es-US", "Polly.Lupe"),  # US Spanish accent
+            "Hindi": ("hi-IN", "Polly.Aditi"),   # Keeping Hindi as is since it's specific to Indian accent
+            "English": ("en-US", "Polly.Joanna") # US English accent
         }
-        lang_text, voice_name = voice_config.get(lang)
+        lang_text, voice_name = voice_config.get(lang, ("en-US", "Polly.Joanna"))  # Default to US English if language not found
         
         response = VoiceResponse()
         response.say(greet, language=lang_text, voice=voice_name)
@@ -821,10 +777,10 @@ async def make_call_with_status(phone_number: str):
         )
         
         print(f"Call initiated to {phone_number}, SID: {call.sid}")
-        csid =  call.sid
+        csid = call.sid
         
     except Exception as e:
-        current_call_status =  CallStatus.COMPLETED
+        current_call_status = CallStatus.COMPLETED
         print(f"Error making call to {phone_number}: {str(e)}")
         raise
 
@@ -894,6 +850,90 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Run the Twilio AI voice assistant server.")
     parser.add_argument('--call', help="The phone number to call, e.g., '--call=+18005551212'")
     return parser.parse_args()
+
+@app.api_route("/incoming-call", methods=["GET", "POST"])
+async def handle_incoming_call(request: Request):
+    global caller_number
+
+    """Handle incoming call and return TwiML response to connect to Media Stream."""
+    form_data = await request.form()
+
+    # Log caller information
+    caller_number = form_data.get("From")
+    caller_name = form_data.get("CallerName") 
+    caller_city = form_data.get("CallerCity")
+    caller_state = form_data.get("CallerState")
+    caller_zip = form_data.get("CallerZip")
+    caller_country = form_data.get("CallerCountry")
+
+    print(f"Caller Number: {caller_number}")
+    print(f"Caller Name: {caller_name}")
+    print(f"Caller Location: {caller_city}, {caller_state}, {caller_zip}, {caller_country}")
+
+    try:
+        greet, lang = fetch_explanation_by_phone(caller_number)
+        target, result = get_targets_and_results(caller_number)
+        
+        voice_config = {
+            "Spanish": ("es-MX", "Polly.Mia"),
+            "Hindi": ("hi-IN", "Polly.Aditi"),
+            "English": ("en-US", "Polly.Joanna")
+        }
+        
+        lang_text, voice_name = voice_config.get(lang, ("en-US", "Polly.Joanna"))  # Default to English if language not found
+        
+        response = VoiceResponse()
+        response.say(greet, language=lang_text, voice=voice_name)
+        response.pause(length=1)
+        response.say(f"These are the targets for today, {target}", language="en-US")
+        response.pause(length=1)
+        response.say(f"Following are the achievements for yesterday. {result}", language="en-US")
+        response.pause(length=1)
+        response.say("You need to focus on your target", language="en-US")
+        response.pause(length=1)
+        response.say("You can start talking now", language="en-US", voice="Polly.Joanna")
+        host = request.url.hostname
+        connect = Connect()
+        connect.stream(url=f"wss://{host}/media-stream")
+        response.append(connect)
+        
+        return HTMLResponse(content=str(response), media_type="application/xml")
+    except Exception as e:
+        print(f"Error handling incoming call: {str(e)}")
+        # Return a basic response in case of error
+        response = VoiceResponse()
+        response.say("We're experiencing technical difficulties. Please try again later.", language="en-US", voice="Polly.Joanna")
+        return HTMLResponse(content=str(response), media_type="application/xml")
+
+from typing import List
+
+class OutgoingCallRequest(BaseModel):
+    phone_numbers: List[str]
+
+@app.post("/call_from_twilio")
+async def trigger_outgoing_calls(data: OutgoingCallRequest):
+    outgoing_call_handler(data.phone_numbers)
+    return {"status": "Call trigger initiated", "numbers": data.phone_numbers}
+
+import asyncio
+
+def outgoing_call_handler(numbers):
+    async def run_all_calls():
+        await asyncio.gather(*(make_call(num) for num in numbers))
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If we're already inside an event loop (e.g., FastAPI), use a background task
+            asyncio.create_task(run_all_calls())
+        else:
+            loop.run_until_complete(run_all_calls())
+    except RuntimeError:
+        # If there's no event loop at all (CLI use case)
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        new_loop.run_until_complete(run_all_calls())
+
 
 if __name__ == "__main__":
     args = parse_arguments()

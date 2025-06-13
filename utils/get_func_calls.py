@@ -3,7 +3,7 @@ from utils.mysql_email_send import process_employee_performance
 from utils.insurance_details import get_insurance_details
 # from utils.mysql_insurance_query import get_insurance_details
 from utils.lendingkart_dummy import get_target_status,incentive_details,penalty_details,collection_improvements,top_defaulters
-from utils.get_employee_details import get_emp_details
+from utils.get_employee_details import get_employee_details
 
 def generate_horoscope_people(sign):
      return f"you are going win 1 million lottery tomorrow {sign}"

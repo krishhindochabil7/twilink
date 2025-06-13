@@ -5,6 +5,10 @@ from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
 import mysql.connector
+from utils.db_config import execute_query
+import sys
+import logging
+from datetime import datetime
 CALLER_NUMBER="780-607-0572"
 api_key = os.getenv('OPENAI_API_KEY')
 openai_client = OpenAI(api_key=api_key)
@@ -109,7 +113,12 @@ master_table_fields = {
         "Social_Media_Response_Time": "Time taken to respond to the social media complaint."
     }
 
-
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def generate_prompt(question):
         """
@@ -219,32 +228,170 @@ def execute_sql_query(query):
             cursor.close()
             connection.close()
 
-def  get_insurance_details(question):
-        """
-        Complete pipeline: Generate prompt, query LLM, clean SQL, and execute.
-        
-        Args:
-            question (str): User's question about the data
-            
-        Returns:
-            list: Query results or None if error occurred
-        """
-        prompt = generate_prompt(question)
-        sql_query = query_llm(prompt)
-        print("Generated SQL Query:", sql_query)
-        return execute_sql_query(sql_query)
+def get_insurance_details(phone_number):
+    """Get insurance details for a given phone number."""
+    query = """
+    SELECT 
+        Policyholder_ID, Name, Address, City, State, Pincode, 
+        Phone_Number, Email, Date_of_Birth, Gender,
+        Bank_Name, Nominee_Name, Nominee_Relationship, Nominee_Contact_Number,
+        Policy_ID, Policy_Type, Policy_Start_Date, Policy_Maturity_Date,
+        Premium_Amount, Premium_Payment_Frequency, Policy_Status,
+        Sum_Assured, Bonus_Amount, Surrender_Value, Loan_Against_Policy,
+        Policy_Documents_Received, Policy_Documents_Received_Date,
+        Claim_ID, Claim_Type, Claim_Amount, Claim_Submission_Date,
+        Claim_Status, Claim_Rejection_Reason
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    try:
+        result = execute_query(query, {"phone_number": phone_number})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting insurance details: {str(e)}")
+        return None
 
+def get_policy_details(phone_number):
+    """Get policy details for a given phone number."""
+    query = """
+    SELECT 
+        Policy_ID, Policy_Type, Policy_Start_Date, Policy_Maturity_Date,
+        Premium_Amount, Premium_Payment_Frequency, Policy_Status,
+        Sum_Assured, Bonus_Amount, Surrender_Value, Loan_Against_Policy,
+        Policy_Documents_Received, Policy_Documents_Received_Date
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    return result[0] if result and isinstance(result, list) and len(result) > 0 else None
+
+def get_claim_details(phone_number):
+    """Get claim details for a given phone number."""
+    query = """
+    SELECT 
+        Claim_ID, Claim_Type, Claim_Amount, Claim_Submission_Date,
+        Claim_Status, Claim_Rejection_Reason
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    return result[0] if result and isinstance(result, list) and len(result) > 0 else None
+
+def get_policyholder_details(phone_number):
+    """Get policyholder details for a given phone number."""
+    query = """
+    SELECT 
+        Policyholder_ID, Name, Address, City, State, Pincode,
+        Phone_Number, Email, Date_of_Birth, Gender
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    return result[0] if result and isinstance(result, list) and len(result) > 0 else None
+
+def get_nominee_details(phone_number):
+    """Get nominee and bank details for a given phone number."""
+    query = """
+    SELECT 
+        Bank_Name, Nominee_Name, Nominee_Relationship, Nominee_Contact_Number
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    return result[0] if result and isinstance(result, list) and len(result) > 0 else None
+
+def update_insurance_details(phone_number, update_data):
+    """Update insurance details for a given phone number."""
+    try:
+        # Build the SET clause dynamically based on provided update_data
+        set_clauses = []
+        params = {"phone_number": phone_number}
+        
+        for key, value in update_data.items():
+            if value is not None:  # Only update non-None values
+                set_clauses.append(f"{key} = :{key}")
+                params[key] = value
+        
+        if not set_clauses:
+            logger.warning("No valid fields to update")
+            return False
+            
+        query = f"""
+        UPDATE Insurance_Details 
+        SET {', '.join(set_clauses)}
+        WHERE Phone_Number = :phone_number
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating insurance details: {str(e)}")
+        return False
+
+def insert_insurance_details(insurance_data):
+    """Insert new insurance details."""
+    try:
+        # Build the INSERT query dynamically
+        columns = []
+        placeholders = []
+        params = {}
+        
+        for key, value in insurance_data.items():
+            if value is not None:  # Only insert non-None values
+                columns.append(key)
+                placeholders.append(f":{key}")
+                params[key] = value
+        
+        if not columns:
+            logger.warning("No valid fields to insert")
+            return False
+            
+        query = f"""
+        INSERT INTO Insurance_Details 
+        ({', '.join(columns)})
+        VALUES ({', '.join(placeholders)})
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error inserting insurance details: {str(e)}")
+        return False
+
+def delete_insurance_details(phone_number):
+    """Delete insurance details for a given phone number."""
+    try:
+        query = """
+        DELETE FROM Insurance_Details 
+        WHERE Phone_Number = :phone_number
+        """
+        execute_query(query, {"phone_number": phone_number})
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting insurance details: {str(e)}")
+        return False
 
 # Example usage
 if __name__ == "__main__":
-    # Database configuration
-      #sql_query = "SELECT * FROM Insurance LIMIT 1"
-      #print(execute_sql_query(sql_query))
-
-    # Single test question
-    question = "Show me all the details of my policy"
-    #question = "List all claims filed  with a status of 'pending' or'rejected'. My phone number is 780-607-0572"
-    # import asyncio
-    # Execute the query for this specific question
-    result =get_insurance_details(question)
-    print("\nQuery Result:", result)
+    # Example phone number
+    phone = "+19787319274"
+    
+    # Get details
+    details = get_insurance_details(phone)
+    print("Current details:", details)
+    
+    # Update example
+    update_data = {
+        "Policy_Status": "Active",
+        "Premium_Amount": 5000.00
+    }
+    if update_insurance_details(phone, update_data):
+        print("Update successful")
+    
+    # Get updated details
+    updated_details = get_insurance_details(phone)
+    print("Updated details:", updated_details)

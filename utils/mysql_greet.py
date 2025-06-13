@@ -1,54 +1,23 @@
-import mysql.connector
-from mysql.connector import Error
+from utils.db_config import execute_query
 
 def fetch_explanation_by_phone(phone_number):
-    # Database connection parameters
-    db_config = {
-        'host': 'localhost',  # Change if your MySQL server is not localhost
-        'user': 'twilio_user',  # Update with your MySQL username
-        'password': 'your_password',  # Update with your MySQL password
-        'database': 'lendingkart_db',  # Your database name
-        'charset': "utf8mb4",
-        'auth_plugin': 'mysql_native_password' 
-    }
-    ret=""
-    language = ""
-
-    try:
-        # Establishing the connection
-        connection = mysql.connector.connect(**db_config)
-
-        if connection.is_connected():
-            cursor = connection.cursor()
-
-            # SQL query to fetch the actionplan by phone number
-            select_query = """
-            SELECT greet_message,language FROM Dummy WHERE number = %s;
-            """
-            cursor.execute(select_query, (phone_number,))
-
-            # Fetch the record
-            record = cursor.fetchone()
-
-            # Check if a record was found
-            if record:
-                print(record)
-                result_explanation = record[0]
-                language = record[1]
-                # print(f"Action Plan for phone number {phone_number}: {result_explanation}")
-                ret=result_explanation
-            else:
-                print(f"No employee found with the phone number: {phone_number}")
-
-    except Error as e:
-        print(f"Error: {e}")
-
-    finally:
-        if connection is not None and connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-    return ret ,language 
+    """Fetch greeting message and language preference for a phone number."""
+    query = """
+    SELECT greet_message, language 
+    FROM Dummy 
+    WHERE number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    
+    if result and isinstance(result, list) and len(result) > 0:
+        greet_message = result[0]['greet_message']
+        language = result[0]['language']
+        if language == "English":
+            greet_message = "Hello, I am the lendingkart AI. How may I help you?"
+        elif language == "Spanish":
+            greet_message = "Hola, soy la inteligencia artificial de Lendingkart. ¿En qué puedo ayudarte?"
+        return greet_message,language
+    return "Hello, I am the lendingkart AI. I am here to help you.", "English"
 
 # # Example usage
 # ret= fetch_explanation_by_phone("+17043693803")

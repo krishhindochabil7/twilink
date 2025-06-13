@@ -1,86 +1,124 @@
-import mysql.connector
-from mysql.connector import Error
-import random
-from faker import Faker
+import os
+import sys
+import logging
+from datetime import datetime
+from utils.db_config import execute_query
 
-# Function to create the table and add dummy records
-def create_table_and_insert_dummy_records():
-    connection = None
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def get_dummy_data(phone_number):
+    """Get dummy data for a given phone number."""
+    query = """
+    SELECT 
+        ID, Phone_Number, Name, Email,
+        Status, Created_Date, Updated_Date
+    FROM Dummy_Table 
+    WHERE Phone_Number = :phone_number
+    """
     try:
-        # Connect to the MySQL database
-        connection = mysql.connector.connect(
-            host='localhost',         # Change if your MySQL server is not localhost
-            user='twilio_user',     # Update with your MySQL username
-            password='your_password',  # Update with your MySQL password
-            database='lendingkart_db',  # Update with your target database
-            auth_plugin='mysql_native_password'
-        )
+        result = execute_query(query, {"phone_number": phone_number})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting dummy data: {str(e)}")
+        return None
 
-        if connection.is_connected():
-            cursor = connection.cursor()
+def update_dummy_data(phone_number, update_data):
+    """Update dummy data for a given phone number."""
+    try:
+        # Build the SET clause dynamically based on provided update_data
+        set_clauses = []
+        params = {"phone_number": phone_number}
+        
+        for key, value in update_data.items():
+            if value is not None:  # Only update non-None values
+                set_clauses.append(f"{key} = :{key}")
+                params[key] = value
+        
+        if not set_clauses:
+            logger.warning("No valid fields to update")
+            return False
+            
+        query = f"""
+        UPDATE Dummy_Table 
+        SET {', '.join(set_clauses)}
+        WHERE Phone_Number = :phone_number
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating dummy data: {str(e)}")
+        return False
 
-            # Create the table
-            create_table_query = """
-            CREATE TABLE employees_table (
-                name VARCHAR(500),
-                phone VARCHAR(14) PRIMARY KEY,
-                email VARCHAR(2000),
-                manager_phone_no VARCHAR(14),
-                managers_email VARCHAR(2000),
-                group_manager_mail VARCHAR(2000),
-                date varchar(10),
-                actionplan TEXT,
-                result_explanation TEXT,
-                acheived_result TEXT,
-                meeting_time VARCHAR(20),
-                meeting_duration INT(9),
-                summary TEXT
-            );
-            """
-            cursor.execute(create_table_query)
-            print("Table 'employees' created successfully.")
+def insert_dummy_data(data):
+    """Insert new dummy data."""
+    try:
+        # Build the INSERT query dynamically
+        columns = []
+        placeholders = []
+        params = {}
+        
+        for key, value in data.items():
+            if value is not None:  # Only insert non-None values
+                columns.append(key)
+                placeholders.append(f":{key}")
+                params[key] = value
+        
+        if not columns:
+            logger.warning("No valid fields to insert")
+            return False
+            
+        query = f"""
+        INSERT INTO Dummy_Table 
+        ({', '.join(columns)})
+        VALUES ({', '.join(placeholders)})
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error inserting dummy data: {str(e)}")
+        return False
 
-            # Generate and insert dummy records
-            fake = Faker()
-            insert_query = """
-            INSERT INTO LENDINGKART_DB (name, phone, email, manager_phone_no, managers_email, group_manager_mail, date, target, result, 
-            actionplan, result_explanation, meeting_time, meeting_duration, summary) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
+def delete_dummy_data(phone_number):
+    """Delete dummy data for a given phone number."""
+    try:
+        query = """
+        DELETE FROM Dummy_Table 
+        WHERE Phone_Number = :phone_number
+        """
+        execute_query(query, {"phone_number": phone_number})
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting dummy data: {str(e)}")
+        return False
 
-            records_to_insert = []
-            for _ in range(100):
-                name = fake.name()
-                phone = fake.phone_number()
-                email = fake.email()
-                manager_phone_no = fake.phone_number()
-                managers_email = fake.email()
-                group_manager_mail = fake.email()
-                date = fake.date()
-                target = random.randint(50, 150)  # Random target between 50 and 150
-                result = random.randint(0, target)  # Result cannot be greater than target
-                actionplan = fake.sentence()
-                result_explanation = fake.paragraph()
-                meeting_time = fake.time()
-                meeting_duration = random.randint(30, 120)  # Meeting duration in minutes
-                summary = fake.text()
-
-                records_to_insert.append((name, phone, email, manager_phone_no, managers_email, group_manager_mail, date, 
-                                           target, result, actionplan, result_explanation, meeting_time, 
-                                           meeting_duration, summary))
-
-            cursor.executemany(insert_query, records_to_insert)
-            connection.commit()
-            print("100 dummy records inserted successfully.")
-
-    except Error as e:
-        print(f"GGGG Error: {e}")
-
-    finally:
-        if connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-
-# Call the function
-create_table_and_insert_dummy_records()
+# Example usage
+if __name__ == "__main__":
+    # Example phone number
+    phone = "+19787319274"
+    
+    # Get dummy data
+    data = get_dummy_data(phone)
+    print("Current dummy data:", data)
+    
+    # Update example
+    update_data = {
+        "Status": "Active",
+        "Updated_Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    if update_dummy_data(phone, update_data):
+        print("Update successful")
+    
+    # Get updated data
+    updated_data = get_dummy_data(phone)
+    print("Updated dummy data:", updated_data)

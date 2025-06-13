@@ -1,143 +1,128 @@
-import mysql.connector
-from mysql.connector import Error
+import os
+import sys
+import logging
+from datetime import datetime
+from utils.db_config import execute_query
 
-def get_all_phone_numbers():
-    # Database connection parameters
-    db_config = {
-        'host': 'localhost', 
-        'user': 'twilio_user', 
-        'password': 'your_password', 
-        'database': 'lendingkart_db', 
-        'charset': "utf8mb4",
-        'auth_plugin': 'mysql_native_password' 
-    }
-    results = []
-    phone_numbers = []
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
+def get_phone_numbers():
+    """Get all phone numbers from the database."""
+    query = """
+    SELECT DISTINCT Phone_Number 
+    FROM Insurance_Details 
+    WHERE Phone_Number IS NOT NULL
+    """
     try:
-        # Establishing the connection
-        connection = mysql.connector.connect(**db_config)
+        result = execute_query(query)
+        return [row[0] for row in result] if result else []
+    except Exception as e:
+        logger.error(f"Error getting phone numbers: {str(e)}")
+        return []
 
-        if connection.is_connected():
-            cursor = connection.cursor()
-
-            # SQL query to fetch the actionplan by phone number
-            select_query = """
-            SELECT * FROM dummy_number
-            """
-            cursor.execute(select_query)
-
-            # Fetch the record
-
-            results = cursor.fetchall()
-
-            # Check if a record was found
-            if results:
-                # print(results)
-                for i in results:
-                    phone_numbers.append(i[0])
-            else:
-                print(f"No employee found with the phone number")
-
-    except Error as e:
-        print(f"Error: {e}")
-
-    finally:
-        if connection is not None and connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-    return phone_numbers 
-
-def get_total_calls_for_number(phone):
-    db_config = {
-        'host': 'localhost', 
-        'user': 'twilio_user', 
-        'password': 'your_password', 
-        'database': 'lendingkart_db', 
-        'charset': "utf8mb4",
-        'auth_plugin': 'mysql_native_password' 
-    }
-
-    total_calls = ""
-
+def get_phone_numbers_by_status(status):
+    """Get phone numbers for policies with a specific status."""
+    query = """
+    SELECT DISTINCT Phone_Number 
+    FROM Insurance_Details 
+    WHERE Policy_Status = :status 
+    AND Phone_Number IS NOT NULL
+    """
     try:
-        # Establishing the connection
-        connection = mysql.connector.connect(**db_config)
+        result = execute_query(query, {"status": status})
+        return [row[0] for row in result] if result else []
+    except Exception as e:
+        logger.error(f"Error getting phone numbers by status: {str(e)}")
+        return []
 
-        if connection.is_connected():
-            cursor = connection.cursor()
-
-            # SQL query to fetch the actionplan by phone number
-            select_query = """
-            SELECT number_of_calls FROM Call_Summary where phone_number = %s
-            """
-            cursor.execute(select_query, (phone,))
-
-            # Fetch the record
-
-            results = cursor.fetchone()
-
-            # Check if a record was found
-            if results:
-                total_calls = results[0]
-            else:
-                print(f"No employee found with the phone number")
-
-    except Error as e:
-        print(f"Error: {e}")
-
-    finally:
-        if connection is not None and connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-    return total_calls 
-
-
-def update_records(phone,duration,total_calls,complete_transcription):
-    db_config = {
-        'host': 'localhost', 
-        'user': 'twilio_user', 
-        'password': 'your_password', 
-        'database': 'lendingkart_db', 
-        'charset': "utf8mb4",
-        'auth_plugin': 'mysql_native_password' 
-    }
-
-
+def get_phone_numbers_by_policy_type(policy_type):
+    """Get phone numbers for a specific policy type."""
+    query = """
+    SELECT DISTINCT Phone_Number 
+    FROM Insurance_Details 
+    WHERE Policy_Type = :policy_type 
+    AND Phone_Number IS NOT NULL
+    """
     try:
-    # Establishing the connection
-        connection = mysql.connector.connect(**db_config)
+        result = execute_query(query, {"policy_type": policy_type})
+        return [row[0] for row in result] if result else []
+    except Exception as e:
+        logger.error(f"Error getting phone numbers by policy type: {str(e)}")
+        return []
 
-        if connection.is_connected():
-            cursor = connection.cursor()
+def get_phone_numbers_by_premium_range(min_premium, max_premium):
+    """Get phone numbers for policies within a premium range."""
+    query = """
+    SELECT DISTINCT Phone_Number 
+    FROM Insurance_Details 
+    WHERE Premium_Amount BETWEEN :min_premium AND :max_premium 
+    AND Phone_Number IS NOT NULL
+    """
+    try:
+        result = execute_query(query, {
+            "min_premium": min_premium,
+            "max_premium": max_premium
+        })
+        return [row[0] for row in result] if result else []
+    except Exception as e:
+        logger.error(f"Error getting phone numbers by premium range: {str(e)}")
+        return []
 
-            # SQL query to update the call summary
-            update_query = """
-            UPDATE Call_Summary
-            SET call_duration = %s,
-                number_of_calls = %s,
-                complete_call_transcription = %s
-            WHERE phone_number = %s
-            """
+def get_total_calls_for_number(phone_number):
+    """Get total calls made to a specific number."""
+    query = """
+    SELECT Total_Calls 
+    FROM Call_Records 
+    WHERE Phone_Number = :phone_number
+    """
+    try:
+        result = execute_query(query, {"phone_number": phone_number})
+        return result[0][0] if result and isinstance(result, list) and len(result) > 0 else 0
+    except Exception as e:
+        logger.error(f"Error getting total calls for number: {str(e)}")
+        return 0
 
-            # Execute the update query
-            cursor.execute(update_query, (duration, total_calls, complete_transcription, phone))
+def update_records(phone_number, duration, total_calls, transcription):
+    """Update call records for a phone number."""
+    query = """
+    UPDATE Call_Records 
+    SET Duration = :duration,
+        Total_Calls = :total_calls,
+        Transcription = :transcription
+    WHERE Phone_Number = :phone_number
+    """
+    params = {
+        "phone_number": phone_number,
+        "duration": duration,
+        "total_calls": total_calls,
+        "transcription": transcription
+    }
+    try:
+        execute_query(query, params)
+        return True
+    except Exception as e:
+        logger.error(f"Error updating call records: {str(e)}")
+        return False
 
-            connection.commit()
-            print("Update successful")
-
-    except Error as e:
-        print(f"Error: {e}")
-
-    finally:
-        if connection is not None and connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-
-
-
-# ret = get_all_phone_numbers()
-# print(ret)
+# Example usage
+if __name__ == "__main__":
+    # Get all phone numbers
+    all_numbers = get_phone_numbers()
+    print("All phone numbers:", all_numbers)
+    
+    # Get numbers by status
+    active_numbers = get_phone_numbers_by_status("Active")
+    print("Active policy numbers:", active_numbers)
+    
+    # Get numbers by policy type
+    life_numbers = get_phone_numbers_by_policy_type("Life")
+    print("Life policy numbers:", life_numbers)
+    
+    # Get numbers by premium range
+    premium_numbers = get_phone_numbers_by_premium_range(1000, 5000)
+    print("Numbers in premium range:", premium_numbers)

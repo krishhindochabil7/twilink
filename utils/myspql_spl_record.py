@@ -1,75 +1,125 @@
-import mysql.connector
-from mysql.connector import Error
+import os
+import sys
+import logging
+from datetime import datetime
+from utils.db_config import execute_query
 
-def insert_employee_record():
-    # Database connection parameters
-    # db_config = {
-    #     'host': 'localhost',  # Change if your MySQL server is not localhost
-    #     'user': 'root',  # Update with your MySQL username
-    #     'password': 'kh27042001',  # Update with your MySQL password
-    #     'database': 'lendingkart_db',
-    #     'auth_plugin': 'mysql_native_password' 
-        
-    # }
-    db_config = {
-    'host': 'localhost',
-    'user': 'twilio_user',
-    'password': 'your_password',
-    'database': 'lendingkart_db',
-    'auth_plugin': 'mysql_native_password'
-}
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-
-    # Employee details to be inserted
-    employee_data = (
-        'Krish',
-        '+19787319274',
-        'krishhindocha@gmail.com',
-        '+19787319274',
-        'krish.hindocha@bilvantis.io',
-        'krishhindocha@gmail.com',
-        '2025-05-12',  # Date in YYYY-MM-DD format
-        50000,
-        40000,
-        "I need to focus on contacting key customers who are into retail business. They were available as yesterday was Ramadan.",
-        "All appears good. Target is 20% away. Lets focus on key customers",
-        '09:30:00',  # Time in HH:MM:SS format
-        100,
-        "All appears good. Target is 20% away. Lets focus on key customers"
-    )
-
-    connection = None 
-
+def get_special_record(phone_number):
+    """Get special record for a given phone number."""
+    query = """
+    SELECT 
+        Record_ID, Phone_Number, Record_Type,
+        Record_Details, Status, Created_Date,
+        Updated_Date, Notes
+    FROM Special_Records 
+    WHERE Phone_Number = :phone_number
+    """
     try:
-        # Establishing the connection
-        connection = mysql.connector.connect(**db_config)
+        result = execute_query(query, {"phone_number": phone_number})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting special record: {str(e)}")
+        return None
 
-        if connection.is_connected():
-            cursor = connection.cursor()
+def update_special_record(phone_number, update_data):
+    """Update special record for a given phone number."""
+    try:
+        # Build the SET clause dynamically based on provided update_data
+        set_clauses = []
+        params = {"phone_number": phone_number}
+        
+        for key, value in update_data.items():
+            if value is not None:  # Only update non-None values
+                set_clauses.append(f"{key} = :{key}")
+                params[key] = value
+        
+        if not set_clauses:
+            logger.warning("No valid fields to update")
+            return False
+            
+        query = f"""
+        UPDATE Special_Records 
+        SET {', '.join(set_clauses)}
+        WHERE Phone_Number = :phone_number
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating special record: {str(e)}")
+        return False
 
-            # SQL query to insert the employee record
-            insert_query = """
-            INSERT INTO lendingkart_db 
-            (name, phone, email, manager_phone_no, managers_email, group_manager_mail, date, target, result, 
-            actionplan, result_explanation, meeting_time, meeting_duration, summary) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
+def insert_special_record(record_data):
+    """Insert new special record."""
+    try:
+        # Build the INSERT query dynamically
+        columns = []
+        placeholders = []
+        params = {}
+        
+        for key, value in record_data.items():
+            if value is not None:  # Only insert non-None values
+                columns.append(key)
+                placeholders.append(f":{key}")
+                params[key] = value
+        
+        if not columns:
+            logger.warning("No valid fields to insert")
+            return False
+            
+        query = f"""
+        INSERT INTO Special_Records 
+        ({', '.join(columns)})
+        VALUES ({', '.join(placeholders)})
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error inserting special record: {str(e)}")
+        return False
 
-            # Executing the insert query
-            cursor.execute(insert_query, employee_data)
+def delete_special_record(phone_number):
+    """Delete special record for a given phone number."""
+    try:
+        query = """
+        DELETE FROM Special_Records 
+        WHERE Phone_Number = :phone_number
+        """
+        execute_query(query, {"phone_number": phone_number})
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting special record: {str(e)}")
+        return False
 
-            # Commit the changes to the database
-            connection.commit()
-            print("Employee record inserted successfully.")
+# Example usage
+if __name__ == "__main__":
+    # Example phone number
+    phone = "+19787319274"
     
-    except Error as e:
-        print(f"Error: {e}")
-
-    finally:
-        if connection is not None and connection.is_connected():
-            cursor.close()
-            connection.close()
-            print("MySQL connection is closed.")
-
-# Call the function
-insert_employee_record()
+    # Get special record
+    record = get_special_record(phone)
+    print("Current special record:", record)
+    
+    # Update example
+    update_data = {
+        "Status": "Processed",
+        "Notes": "Updated on " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    if update_special_record(phone, update_data):
+        print("Update successful")
+    
+    # Get updated record
+    updated_record = get_special_record(phone)
+    print("Updated special record:", updated_record)

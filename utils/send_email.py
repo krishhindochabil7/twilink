@@ -4,12 +4,16 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import logging
 import os
-import mysql.connector
-from mysql.connector import Error
+import sys
+from datetime import datetime
+from utils.db_config import execute_query
 
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
@@ -23,6 +27,97 @@ SMTP_PORT = 587
 # SENDER_PASSWORD="wrmm fguv ptqv uqnk"
 
 # RECIPIENTS = ["varuninmail@gmail.com", "varunsekhar208@gmail.com"]  # Replace with actual emails
+
+def get_email_recipients(phone_number):
+    """Get email recipients for a given phone number."""
+    query = """
+    SELECT 
+        Email, Name, Manager_Email,
+        Group_Manager_Email, Department
+    FROM Email_Recipients 
+    WHERE Phone_Number = :phone_number
+    """
+    try:
+        result = execute_query(query, {"phone_number": phone_number})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting email recipients: {str(e)}")
+        return None
+
+def update_email_recipients(phone_number, update_data):
+    """Update email recipients for a given phone number."""
+    try:
+        # Build the SET clause dynamically based on provided update_data
+        set_clauses = []
+        params = {"phone_number": phone_number}
+        
+        for key, value in update_data.items():
+            if value is not None:  # Only update non-None values
+                set_clauses.append(f"{key} = :{key}")
+                params[key] = value
+        
+        if not set_clauses:
+            logger.warning("No valid fields to update")
+            return False
+            
+        query = f"""
+        UPDATE Email_Recipients 
+        SET {', '.join(set_clauses)}
+        WHERE Phone_Number = :phone_number
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating email recipients: {str(e)}")
+        return False
+
+def insert_email_recipients(recipient_data):
+    """Insert new email recipients."""
+    try:
+        # Build the INSERT query dynamically
+        columns = []
+        placeholders = []
+        params = {}
+        
+        for key, value in recipient_data.items():
+            if value is not None:  # Only insert non-None values
+                columns.append(key)
+                placeholders.append(f":{key}")
+                params[key] = value
+        
+        if not columns:
+            logger.warning("No valid fields to insert")
+            return False
+            
+        query = f"""
+        INSERT INTO Email_Recipients 
+        ({', '.join(columns)})
+        VALUES ({', '.join(placeholders)})
+        """
+        
+        execute_query(query, params)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error inserting email recipients: {str(e)}")
+        return False
+
+def delete_email_recipients(phone_number):
+    """Delete email recipients for a given phone number."""
+    try:
+        query = """
+        DELETE FROM Email_Recipients 
+        WHERE Phone_Number = :phone_number
+        """
+        execute_query(query, {"phone_number": phone_number})
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting email recipients: {str(e)}")
+        return False
 
 async def get_recipents(phone_number):
     db_config = {
@@ -104,3 +199,22 @@ if __name__ == "__main__":
     asyncio.run(send_email_1(SENDER_EMAIL, SENDER_PASSWORD, RECIPIENTS, subject, body))
     # r = get_recipents("+17043693803")
     # print(r)
+
+    # Example phone number
+    phone = "+19787319274"
+    
+    # Get email recipients
+    recipients = get_email_recipients(phone)
+    print("Current email recipients:", recipients)
+    
+    # Update example
+    update_data = {
+        "Manager_Email": "new.manager@example.com",
+        "Updated_Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    if update_email_recipients(phone, update_data):
+        print("Update successful")
+    
+    # Get updated recipients
+    updated_recipients = get_email_recipients(phone)
+    print("Updated email recipients:", updated_recipients)

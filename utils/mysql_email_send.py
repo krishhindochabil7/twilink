@@ -8,8 +8,9 @@ import logging
 import openai
 import os
 from dotenv import load_dotenv
-load_dotenv()
 from utils.send_email import send_email_1
+from utils.db_config import execute_query
+
 # --------------------------
 # LOGGING CONFIGURATION
 # --------------------------
@@ -177,8 +178,99 @@ def process_employee_performance(phone_number: str):
     send_email_1(SENDER_EMAIL, SENDER_PASSWORD,RECIPIENTS, email_subject,email_body )
     return False
 
+def get_recipients(phone_number):
+    """Get email recipients for a given phone number."""
+    query = """
+    SELECT 
+        manager_email,
+        group_manager_email
+    FROM Employee_Details 
+    WHERE phone_number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    if result and isinstance(result, list) and len(result) > 0:
+        return [result[0]['manager_email'], result[0]['group_manager_email']]
+    return []
 
-    
+def get_employee_details(phone_number):
+    """Get employee details for a given phone number."""
+    query = """
+    SELECT 
+        name,
+        email,
+        phone_number,
+        manager_name,
+        manager_email,
+        group_manager_email
+    FROM Employee_Details 
+    WHERE phone_number = :phone_number
+    """
+    result = execute_query(query, {"phone_number": phone_number})
+    return result[0] if result and isinstance(result, list) and len(result) > 0 else None
+
+def update_email_status(phone_number, email_sent=True):
+    """Update email status for a given phone number."""
+    query = """
+    UPDATE Employee_Details 
+    SET last_email_sent = CURRENT_TIMESTAMP,
+        email_sent = :email_sent
+    WHERE phone_number = :phone_number
+    """
+    return execute_query(query, {
+        "phone_number": phone_number,
+        "email_sent": email_sent
+    })
+
+def get_email_details(phone_number):
+    """Get email details for a given phone number."""
+    query = """
+    SELECT 
+        Email, Name, Policy_ID, Policy_Type, 
+        Policy_Status, Premium_Amount, Sum_Assured
+    FROM Insurance_Details 
+    WHERE Phone_Number = :phone_number
+    """
+    try:
+        result = execute_query(query, {"phone_number": phone_number})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting email details: {str(e)}")
+        return None
+
+def update_email_details(phone_number, email):
+    """Update email address for a given phone number."""
+    try:
+        query = """
+        UPDATE Insurance_Details 
+        SET Email = :email
+        WHERE Phone_Number = :phone_number
+        """
+        execute_query(query, {
+            "phone_number": phone_number,
+            "email": email
+        })
+        return True
+    except Exception as e:
+        logger.error(f"Error updating email details: {str(e)}")
+        return False
+
+def get_email_template(template_name):
+    """Get email template by name."""
+    query = """
+    SELECT Template_Content 
+    FROM Email_Templates 
+    WHERE Template_Name = :template_name
+    """
+    try:
+        result = execute_query(query, {"template_name": template_name})
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0][0]  # Return the template content
+        return None
+    except Exception as e:
+        logger.error(f"Error getting email template: {str(e)}")
+        return None
 
 if __name__ == "__main__":
     phone_number="+919963029130"
